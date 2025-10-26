@@ -1,0 +1,23 @@
+# Make sure ignore is sane
+cat > .gitignore << 'EOF'
+node_modules/
+.next/
+out/
+.vercel/
+.env
+.env.*.local
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+*.swp
+EOF
+
+# In case .env was staged earlier
+git rm --cached -f .env 2>/dev/null || true
+
+# Stage everything else and commit
+git add -A
+git commit -m "feat: add Next.js app and admin dashboard"
