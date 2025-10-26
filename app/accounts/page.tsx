@@ -21,7 +21,7 @@ type Gamification = {
   recent: Array<{ id: string; title: string; deltaXp: number; at: string }>
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || ""
+// Removed unused API_BASE
 const FEED_URL = process.env.NEXT_PUBLIC_FEED_URL || "http://localhost:3000"
 
 export default function AccountPage() {
@@ -100,7 +100,7 @@ function GamifiedAccount() {
         <Button
           variant="outline"
           onClick={() => {
-            window.location.href = "/"
+            window.location.href = FEED_URL
           }}
         >
           Back to Feed

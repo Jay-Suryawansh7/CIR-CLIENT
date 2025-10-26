@@ -1,7 +1,7 @@
 // components/feed-comp/CommentList.tsx
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -55,29 +55,30 @@ export function CommentList({
   const [comments, setComments] = useState<FeedComment[] | null>(null)
   const reqIdRef = useRef(0)
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     const id = ++reqIdRef.current
     try {
       const data = await fetchComments(issueId)
       if (reqIdRef.current === id) setComments(data)
-    } catch (e: any) {
-      if (reqIdRef.current === id) setError(e?.message || "Failed to load comments")
+    } catch (e: unknown) {
+      if (reqIdRef.current === id) {
+        const msg = e instanceof Error ? e.message : "Failed to load comments"
+        setError(msg)
+      }
     } finally {
       if (reqIdRef.current === id) setLoading(false)
     }
-  }
+  }, [issueId, fetchComments])
 
   useEffect(() => {
-    if (open && comments == null && !loading) load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+    if (open && comments == null && !loading) void load()
+  }, [open, comments, loading, load])
 
   useEffect(() => {
-    if (open) load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version])
+    if (open) void load()
+  }, [open, version, load])
 
   const body = useMemo(() => {
     if (loading) {
@@ -114,11 +115,12 @@ export function CommentList({
       <ScrollArea className="h-72">
         <ul className="divide-y">
           {comments.map((c, idx) => {
-            // ✅ Guaranteed-unique, stable key across varied backends
             const key =
               c.id ||
               c._id ||
-              `${c.issueId}:${typeof c.createdAt === "string" ? c.createdAt : (c.createdAt as Date).toISOString()}:${idx}`
+              `${c.issueId}:${
+                typeof c.createdAt === "string" ? c.createdAt : (c.createdAt as Date).toISOString()
+              }:${idx}`
             return (
               <li key={key} className="p-3 flex gap-3">
                 {c.authorAvatar ? (
@@ -148,7 +150,7 @@ export function CommentList({
         </ul>
       </ScrollArea>
     )
-  }, [comments, error, loading])
+  }, [comments, error, loading, load])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

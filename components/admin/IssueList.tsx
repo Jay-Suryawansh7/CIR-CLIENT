@@ -1,3 +1,4 @@
+// components/feed-comp/IssueList.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,8 +20,12 @@ export default function IssueList() {
           setData(res);
           setError(null);
         }
-      } catch (e: any) {
-        if (!abort) setError(e?.message || "Failed to load issues");
+      } catch (e: unknown) {
+        if (!abort) {
+          const message =
+            e instanceof Error ? e.message : "Failed to load issues";
+          setError(message);
+        }
       } finally {
         if (!abort) setLoading(false);
       }
@@ -37,7 +42,7 @@ export default function IssueList() {
   return (
     <div className="space-y-4">
       {data.map((i) => (
-        <IssueCard key={i.id} issue={i as any} />
+        <IssueCard key={i.id} issue={i} />
       ))}
     </div>
   );

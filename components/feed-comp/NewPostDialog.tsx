@@ -1,7 +1,7 @@
 // components/feed-comp/NewPostDialog.tsx
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import {
   Dialog,
   DialogContent,
@@ -14,24 +14,21 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import Image from "next/image"
-import { useAuth } from "@clerk/nextjs" // ← for token on protected endpoints
-import { api } from "@/lib/api"         // ← for /api/ai/draft helper (if you created it)
-import { cn as _cn } from "@/lib/utils" // optional; remove or alias if not present
+import { useAuth } from "@clerk/nextjs"
+import { api } from "@/lib/api"
+import { cn as _cn } from "@/lib/utils"
 
 type CreatePayload = {
   title: string
   description: string
-  location: string            // human-readable resolved address
-  image: string               // final Cloudinary secure_url
-  // Optional AI metadata if your backend accepts them:
+  location: string
+  image: string
   category?: string
   aiConfidence?: number
-  // If your backend previously accepted ward, it can remain optional and omitted.
   ward?: string | undefined
 }
 
 type Step = "compose" | "review"
-
 type Coords = { lat: number; lng: number } | null
 
 export function NewPostDialog({
@@ -47,8 +44,8 @@ export function NewPostDialog({
 
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [resolvedAddress, setResolvedAddress] = useState("")  // replaces manual location input
-  const [coords, setCoords] = useState<Coords>(null)          // raw GPS coords
+  const [resolvedAddress, setResolvedAddress] = useState("")
+  const [coords, setCoords] = useState<Coords>(null)
   const [fetchingLoc, setFetchingLoc] = useState(false)
 
   const [file, setFile] = useState<File | null>(null)
@@ -56,7 +53,7 @@ export function NewPostDialog({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [step, setStep] = useState<Step>("compose")
-  const [imageUrl, setImageUrl] = useState<string>("") // store Cloudinary URL after upload
+  const [imageUrl, setImageUrl] = useState<string>("")
 
   const [aiCategory, setAiCategory] = useState<string | undefined>()
   const [aiConfidence, setAiConfidence] = useState<number | undefined>()
@@ -64,9 +61,12 @@ export function NewPostDialog({
   const dropRef = useRef<HTMLDivElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
-  // If you don't have cn(), fall back to simple joiner
+  // Typed cn fallback (no any)
   const cn = (...cls: (string | false | null | undefined)[]) =>
-    (typeof _cn === "function" ? _cn : ((...k: any[]) => k.filter(Boolean).join(" ")))(...cls)
+    (typeof _cn === "function"
+      ? _cn
+      : ((...k: (string | false | null | undefined)[]) => k.filter(Boolean).join(" "))
+    )(...cls)
 
   // Clean preview URL on unmount/close
   useEffect(() => {
@@ -94,9 +94,9 @@ export function NewPostDialog({
       setAiConfidence(undefined)
       setFetchingLoc(false)
     }
-  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open])
 
-  const handleFile = (f: File) => {
+  const handleFile = useCallback((f: File) => {
     if (!f.type.startsWith("image/")) {
       setError("Please select a valid image file.")
       return
@@ -110,14 +110,14 @@ export function NewPostDialog({
     setFile(f)
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setPreviewUrl(URL.createObjectURL(f))
-  }
+  }, [previewUrl])
 
   const onInputFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (f) handleFile(f)
   }
 
-  // Drag-and-drop handlers
+  // Drag-and-drop handlers (depend on handleFile)
   useEffect(() => {
     const el = dropRef.current
     if (!el) return
@@ -145,9 +145,9 @@ export function NewPostDialog({
       el.removeEventListener("dragleave", onDragLeave)
       el.removeEventListener("drop", onDrop)
     }
-  }, [])
+  }, [handleFile])
 
-  // Acquire current location via browser GPS and reverse-geocode to a compact address
+  // Acquire current location via browser GPS and reverse-geocode
   const fetchCurrentLocation = async () => {
     if (fetchingLoc || busy) return
     setError(null)
@@ -156,12 +156,11 @@ export function NewPostDialog({
     try {
       // 1) Get GPS coords
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        const id = navigator.geolocation.getCurrentPosition(resolve, reject, {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
           timeout: 15000,
           maximumAge: 0,
         })
-        return id
       })
 
       const lat = position.coords.latitude
@@ -169,7 +168,6 @@ export function NewPostDialog({
       setCoords({ lat, lng })
 
       // 2) Reverse-geocode (client-side via OSM Nominatim)
-      // For production: proxy this through your backend to respect provider usage policies.
       const params = new URLSearchParams({
         lat: String(lat),
         lon: String(lng),
@@ -179,34 +177,41 @@ export function NewPostDialog({
 
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
         method: "GET",
-        headers: {
-          "Accept": "application/json",
-          // Set a descriptive UA if you proxy through backend. Client may ignore.
-        },
+        headers: { Accept: "application/json" },
       })
 
       if (!res.ok) {
         throw new Error("Reverse geocoding failed.")
       }
-      const data = await res.json()
+      const data = (await res.json()) as {
+        address?: Partial<Record<string, string>>
+        display_name?: string
+      }
 
-      // Build a concise address from available parts
-      const a = data?.address || {}
+      const a = data?.address ?? {}
       const parts: string[] = [
         a.road,
         a.neighbourhood || a.suburb,
         a.city || a.town || a.village,
         a.state_district || a.state,
         a.postcode,
-      ].filter(Boolean)
+      ].filter((x): x is string => Boolean(x))
 
-      const compact = parts.join(", ") || data?.display_name || `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`
+      const compact =
+        parts.join(", ") || data?.display_name || `Lat ${lat.toFixed(5)}, Lng ${lng.toFixed(5)}`
       setResolvedAddress(compact)
-    } catch (e: any) {
-      const msg =
-        e?.code === e?.PERMISSION_DENIED
-          ? "Location permission denied. Enable location services and retry."
-          : e?.message || "Failed to fetch current location."
+    } catch (e: unknown) {
+      // Geolocation errors typically expose a numeric `code` (1 = permission denied)
+      let msg = "Failed to fetch current location."
+      const o = e as Record<string, unknown>
+      const code = typeof o?.code === "number" ? (o.code as number) : undefined
+      if (code === 1) {
+        msg = "Location permission denied. Enable location services and retry."
+      } else if (typeof o?.message === "string") {
+        msg = o.message as string
+      } else if (e instanceof Error) {
+        msg = e.message
+      }
       setError(msg)
       setCoords(null)
       setResolvedAddress("")
@@ -215,14 +220,12 @@ export function NewPostDialog({
     }
   }
 
-  // In compose step, enabling “Generate with AI” requires address + image + auth
   const canGenerate =
     resolvedAddress.trim().length >= 3 &&
     !!file &&
     !busy &&
     isSignedIn
 
-  // In review step, enabling “Publish” requires title/desc + resolved address + image
   const canPublish =
     title.trim().length >= 3 &&
     description.trim().length >= 5 &&
@@ -230,10 +233,6 @@ export function NewPostDialog({
     !!imageUrl &&
     !busy
 
-  /**
-   * Step 1: Upload to Cloudinary (signed), then call AI draft via OpenRouter on backend.
-   * Fills title/description, stores category/confidence, moves to "review".
-   */
   const generateWithAI = async () => {
     if (!canGenerate || !file) return
     setBusy(true)
@@ -242,13 +241,19 @@ export function NewPostDialog({
       const BASE = process.env.NEXT_PUBLIC_API_BASE || ""
       const token = await getToken()
 
-      // 1) Ask backend for Cloudinary signature (attach token if your route is protected)
+      // 1) Cloudinary signature
       const signRes = await fetch(`${BASE}/api/cloudinary/sign`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       if (!signRes.ok) throw new Error("Failed to get Cloudinary signature.")
-      const { timestamp, folder, signature, apiKey, cloudName } = await signRes.json()
+      const { timestamp, folder, signature, apiKey, cloudName } = (await signRes.json()) as {
+        timestamp: number
+        folder: string
+        signature: string
+        apiKey: string | number
+        cloudName: string
+      }
 
       // 2) Upload image to Cloudinary
       const fd = new FormData()
@@ -264,14 +269,13 @@ export function NewPostDialog({
         const txt = await upRes.text().catch(() => "")
         throw new Error(`Cloudinary upload failed. ${txt}`)
       }
-      const uploaded = await upRes.json()
-      const url: string | undefined = uploaded?.secure_url
+      const uploaded = (await upRes.json()) as { secure_url?: string }
+      const url = uploaded?.secure_url
       if (!url) throw new Error("No image URL returned by Cloudinary.")
       setImageUrl(url)
 
-      // 3) Call backend AI draft (OpenRouter Gemini 2.0 Flash)
-      // Pass resolved human-readable address; ward omitted (removed from UI).
-      const draft = await api.draftFromImage(url, token!, resolvedAddress.trim(), undefined)
+      // 3) AI draft
+      const draft = await api.draftFromImage(url, token ?? "", resolvedAddress.trim(), "")
 
       // 4) Pre-fill form with AI output for review
       setTitle(draft.title || title)
@@ -280,16 +284,14 @@ export function NewPostDialog({
       setAiConfidence(draft.confidence)
 
       setStep("review")
-    } catch (e: any) {
-      setError(e?.message || "AI drafting failed. You can still publish manually.")
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "AI drafting failed. You can still publish manually."
+      setError(msg)
     } finally {
       setBusy(false)
     }
   }
 
-  /**
-   * Step 2: Publish using parent onCreate (server persists).
-   */
   const publish = async () => {
     try {
       await onCreate({
@@ -299,11 +301,11 @@ export function NewPostDialog({
         image: imageUrl,
         category: aiCategory,
         aiConfidence: aiConfidence,
-        // ward intentionally omitted
       })
       onOpenChange(false)
-    } catch (e: any) {
-      setError(e?.message || "Failed to create the issue.")
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to create the issue."
+      setError(msg)
     }
   }
 
@@ -325,7 +327,7 @@ export function NewPostDialog({
               placeholder="e.g., Deep pothole on MG Road"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              disabled={step === "compose"} // editable after draft
+              disabled={step === "compose"}
             />
           </div>
 
@@ -338,7 +340,7 @@ export function NewPostDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              disabled={step === "compose"} // editable after draft
+              disabled={step === "compose"}
             />
           </div>
 
@@ -403,7 +405,7 @@ export function NewPostDialog({
                   accept="image/*"
                   className="mt-2"
                   onChange={onInputFile}
-                  disabled={busy || step === "review"} // lock after upload
+                  disabled={busy || step === "review"}
                 />
               </div>
 

@@ -1,4 +1,3 @@
-// lib/use-issues.ts
 "use client";
 
 import useSWR, { useSWRConfig } from "swr";
@@ -13,15 +12,13 @@ export type Issue = {
   location?: string;
   status?: string;
   createdAt?: string;
-  [k: string]: any;
-};
+} & Record<string, unknown>; // 👈 Replaces `[k: string]: any` safely
 
 export const ISSUES_KEY = "/issues";
 
 export function useIssues() {
   const { mutate } = useSWRConfig();
 
- 
   const { data, error, isLoading } = useSWR<Issue[]>(
     ISSUES_KEY,
     async () => {
@@ -31,7 +28,7 @@ export function useIssues() {
     },
     { revalidateOnFocus: true }
   );
-  // Realtime: subscribe to WS once
+
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_WS_URL;
     if (!url) return;
@@ -44,11 +41,15 @@ export function useIssues() {
       return;
     }
 
-    ws.onmessage = (evt) => {
+    ws.onmessage = (evt: MessageEvent<string>) => {
       try {
-        const msg = JSON.parse(evt.data ?? "{}");
+        const msg = JSON.parse(evt.data ?? "{}") as {
+          type?: string;
+          payload?: Issue;
+        };
+
         if (msg?.type === "issue:created" && msg.payload) {
-          const incoming = msg.payload as Issue;
+          const incoming = msg.payload;
           mutate(
             ISSUES_KEY,
             (old?: Issue[]) => {
@@ -67,7 +68,11 @@ export function useIssues() {
     };
 
     return () => {
-      try { ws?.close(); } catch {}
+      try {
+        ws?.close();
+      } catch {
+        // ignore
+      }
     };
   }, [mutate]);
 

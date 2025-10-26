@@ -16,8 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   ShieldCheck,
-  ChevronDown,
-  Pencil,
+  // Removed unused: ChevronDown, Pencil
   Share2,
   Copy,
   Info,
@@ -81,9 +80,9 @@ export function FeedCard({
   issue,
   onLike,
   onComment,
-  isAdmin = false,
-  onUpdateStatus,
-  onEdit,
+  isAdmin: _isAdmin = false,           // prefixed to avoid unused warning
+  onUpdateStatus: _onUpdateStatus,     // prefixed to avoid unused warning
+  onEdit: _onEdit,                     // prefixed to avoid unused warning
 }: {
   issue: Issue;
   onLike?: () => void;
@@ -133,7 +132,6 @@ export function FeedCard({
   const activeIdx = TIMELINE.findIndex((s) => s === liveStatus);
 
   return (
-    // ↓ Reduced overall width
     <Card className="w-full max-w-xl mx-auto overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200">
       <div className="relative w-full h-60">
         <Image src={issue.image} alt={issue.title} fill className="object-cover" sizes="(max-width: 768px) 100vw, 800px" />
@@ -300,7 +298,7 @@ export function FeedCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          <div className="flex items-center gap-2 mt-3">
+        <div className="flex items-center gap-2 mt-3">
             <Input readOnly value={shareUrl} className="flex-1" />
             <Button
               variant="secondary"
